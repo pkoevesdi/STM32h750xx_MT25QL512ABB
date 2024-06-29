@@ -32,7 +32,7 @@ algorithm!(Algorithm, {
 impl FlashAlgorithm for Algorithm {
     fn new(_address: u32, _clock: u32, _function: Function) -> Result<Self, ErrorCode> {
         rtt_init_print!();
-        // rprintln!("Initialising Flash...");
+        rprintln!("Initialising Flash...");
 
         let dp = pac::Peripherals::take().unwrap();
 
@@ -77,7 +77,6 @@ impl FlashAlgorithm for Algorithm {
         // Change bus mode
         octospi.configure_mode(OctospiMode::FourBit).unwrap();
 
-        rprintln!("Freezing clock...");
         Ok(Self { octospi })
     }
 
