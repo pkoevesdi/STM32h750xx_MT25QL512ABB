@@ -4,8 +4,8 @@ rustflags = [
   "link-arg=--nmagic",
   "-C",
   "link-arg=-Tlink.x",
-  "-C",
-  "link-arg=-Tmemory.x",
+  # "-C",
+  # "link-arg=-Tmemory.x",
   # Code-size optimizations.
   # This requires nightly atm.
   # "-Z",
@@ -17,7 +17,7 @@ rustflags = [
   "-C",
   "force-frame-pointers=no",
 ]
-runner = "target-gen test template.yaml target/definition.yaml"
+runner = "probe-rs run --chip STM32H730VBTx"
 
 [build]
 target = "thumbv7em-none-eabihf"

@@ -20,7 +20,7 @@ flash-algorithm = { version = "0.4.0", default-features = false, features = [
 # this lets you use `cargo fix`!
 [[bin]]
 name = "stm32h730xx_is25lp128"
-path = "src/lib.rs"
+# path = "src/lib.rs"
 test = false
 bench = false
 
