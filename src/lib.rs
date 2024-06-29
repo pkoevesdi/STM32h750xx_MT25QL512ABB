@@ -4,8 +4,8 @@
 // use core::mem::MaybeUninit;
 
 use core::cmp::min;
-use panic_probe as _;
 use flash_algorithm::*;
+use panic_probe as _;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32h7xx_hal::gpio::Speed;
 use stm32h7xx_hal::pac::OCTOSPI1;
@@ -43,14 +43,14 @@ impl FlashAlgorithm for Algorithm {
         // Constrain and Freeze clock
         let rcc = dp.RCC.constrain();
         let ccdr = rcc.sys_ck(64.MHz());
-        let ccdr=ccdr.freeze(pwrcfg, &dp.SYSCFG);
-        
+        let ccdr = ccdr.freeze(pwrcfg, &dp.SYSCFG);
+
         // Acquire the GPIO peripherals. This also enables the clock for
         // the GPIOs in the RCC register.
         let gpioa = dp.GPIOA.split(ccdr.peripheral.GPIOA);
         let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
         let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
-        
+
         // "All GPIOs have to be configured in very high-speed configuration." - AN5050, p. 30
         let _ncs = gpioc.pc11.into_alternate::<9>().speed(Speed::VeryHigh);
         let _clk = gpioa.pa3.into_alternate::<12>().speed(Speed::VeryHigh);
@@ -58,29 +58,29 @@ impl FlashAlgorithm for Algorithm {
         let _io1 = gpioc.pc10.into_alternate::<9>().speed(Speed::VeryHigh);
         let _io2 = gpioe.pe2.into_alternate::<9>().speed(Speed::VeryHigh);
         let _io3 = gpioa.pa6.into_alternate::<6>().speed(Speed::VeryHigh);
-        
+
         // Initialise the OCTOSPI peripheral.
         let mut octospi =
-        dp.OCTOSPI1
-        .octospi_unchecked(1.MHz(), &ccdr.clocks, ccdr.peripheral.OCTOSPI1);
-    
-    // switch to QPI mode
-    octospi
-    .write_extended(
-        OctospiWord::U8(cmds::Cmds::Qpien as u8),
-        OctospiWord::None,
-        OctospiWord::None,
-        &[],
-        )
-        .unwrap();
-    
-    // Change bus mode
-    octospi.configure_mode(OctospiMode::FourBit).unwrap();
-    
-    rprintln!("Freezing clock...");
-    Ok(Self { octospi })
+            dp.OCTOSPI1
+                .octospi_unchecked(1.MHz(), &ccdr.clocks, ccdr.peripheral.OCTOSPI1);
+
+        // switch to QPI mode
+        octospi
+            .write_extended(
+                OctospiWord::U8(cmds::Cmds::Qpien as u8),
+                OctospiWord::None,
+                OctospiWord::None,
+                &[],
+            )
+            .unwrap();
+
+        // Change bus mode
+        octospi.configure_mode(OctospiMode::FourBit).unwrap();
+
+        rprintln!("Freezing clock...");
+        Ok(Self { octospi })
     }
-    
+
     fn erase_all(&mut self) -> Result<(), ErrorCode> {
         rprintln!("Erasing All...");
 
@@ -175,7 +175,7 @@ impl FlashAlgorithm for Algorithm {
                 lim,
                 &read[0..lim]
             );
-   
+
             if &read[0..lim] != &data[i..i + lim] {
                 return Err(ErrorCode::new(0x1).unwrap());
             }
