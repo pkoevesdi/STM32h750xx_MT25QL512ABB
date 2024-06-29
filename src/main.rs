@@ -14,9 +14,9 @@ fn main() -> ! {
 
     let mut algo = Algorithm::new(0, 0, Function::Verify).unwrap();
 
-    algo.erase_all().unwrap();
+    // algo.erase_all().unwrap();
     // algo.erase_sector(addr).unwrap();
-    algo.program_page(addr, data).unwrap();
+    // algo.program_page(addr, data).unwrap();
     match algo.verify(addr, data.len() as u32, Some(data)) {
         Ok(_) => rprintln!("Verified."),
         Err(_) => rprintln!("Not verified."),
