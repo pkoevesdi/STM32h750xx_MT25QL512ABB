@@ -65,17 +65,17 @@ impl FlashAlgorithm for Algorithm {
                 .octospi_unchecked(1.MHz(), &ccdr.clocks, ccdr.peripheral.OCTOSPI1);
 
         // switch to QPI mode
-        octospi
-            .write_extended(
-                OctospiWord::U8(cmds::Cmds::Qpien as u8),
-                OctospiWord::None,
-                OctospiWord::None,
-                &[],
-            )
-            .unwrap();
+        // octospi
+        //     .write_extended(
+        //         OctospiWord::U8(cmds::Cmds::Qpien as u8),
+        //         OctospiWord::None,
+        //         OctospiWord::None,
+        //         &[],
+        //     )
+        //     .unwrap();
 
         // Change bus mode
-        octospi.configure_mode(OctospiMode::FourBit).unwrap();
+        octospi.configure_mode(OctospiMode::OneBit).unwrap();
 
         Ok(Self { octospi })
     }
