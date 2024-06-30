@@ -6,7 +6,7 @@
 use core::cmp::min;
 use flash_algorithm::*;
 use panic_probe as _;
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::{rprint, rprintln, rtt_init_print};
 use stm32h7xx_hal::gpio::Speed;
 use stm32h7xx_hal::pac::OCTOSPI1;
 use stm32h7xx_hal::{pac, prelude::*, xspi::Octospi, xspi::OctospiMode, xspi::OctospiWord};
@@ -32,7 +32,7 @@ algorithm!(Algorithm, {
 impl FlashAlgorithm for Algorithm {
     fn new(_address: u32, _clock: u32, _function: Function) -> Result<Self, ErrorCode> {
         rtt_init_print!();
-        rprintln!("Initialising Flash...");
+        rprint!("Initialising Flash...");
 
         let dp = pac::Peripherals::take().unwrap();
 
@@ -77,6 +77,8 @@ impl FlashAlgorithm for Algorithm {
         // Change bus mode
         octospi.configure_mode(OctospiMode::OneBit).unwrap();
 
+        rprintln!("done");
+
         Ok(Self { octospi })
     }
 
@@ -100,7 +102,7 @@ impl FlashAlgorithm for Algorithm {
     }
 
     fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        rprintln!("Erasing sector addr: {:#2x}...", addr);
+        rprint!("Erasing sector addr: {:#2x}...", addr);
 
         write_enable!(self);
 
@@ -114,6 +116,8 @@ impl FlashAlgorithm for Algorithm {
             .unwrap();
 
         wait_for_flash!(self);
+        rprint!("done");
+
         Ok(())
     }
 
