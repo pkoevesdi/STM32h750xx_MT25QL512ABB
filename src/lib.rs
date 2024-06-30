@@ -19,7 +19,7 @@ pub struct Algorithm {
 }
 
 algorithm!(Algorithm, {
-    flash_address: 0x0000000,
+    flash_address: 0x90000000,
     flash_size: 0x1000000,
     page_size: 0x100,
     empty_value: 0xff,

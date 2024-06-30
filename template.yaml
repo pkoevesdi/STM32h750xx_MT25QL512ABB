@@ -3,7 +3,7 @@ variants:
   - name: algorithm-test
     cores:
       - name: main
-        type: armv6m
+        type: armv7em
         core_access_options: !Arm
           ap: 0x0
           psel: 0x0
@@ -12,14 +12,14 @@ variants:
           range:
             start: 0x20000000
             end: 0x20020000
-          is_boot_memory: false
+          # is_boot_memory: false
           cores:
             - main
       - !Nvm
           range:
-            start: 0x0
-            end: 0x1000000
-          is_boot_memory: true
+            start: 0x90000000
+            end: 0x91000000
+          # is_boot_memory: true
           cores:
             - main
     flash_algorithms:
