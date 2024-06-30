@@ -13,6 +13,8 @@ variants:
             start: 0x20000000
             end: 0x20020000
           # is_boot_memory: false
+          access:
+            boot: true
           cores:
             - main
       - !Nvm
@@ -20,6 +22,8 @@ variants:
             start: 0x90000000
             end: 0x91000000
           # is_boot_memory: true
+          access:
+            boot: true
           cores:
             - main
     flash_algorithms:
