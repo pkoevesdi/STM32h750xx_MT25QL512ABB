@@ -189,6 +189,9 @@ impl FlashAlgorithm for Algorithm {
 
 impl Drop for Algorithm {
     fn drop(&mut self) {
-        // TODO: Add code here to uninitialize the flash algorithm.
+        rprint!("Uninitialising flash...");
+
+        
+        rprintln!("done");
     }
 }
