@@ -1,26 +1,23 @@
 [package]
 edition = "2021"
 readme = "README.md"
-name = "stm32h730xx_is25lp128"
+name = "stm32h750xx_mt25_ql512"
 version = "0.1.0"
 
 [dependencies]
+cortex-m = "0.7.0"                                        # from template
+flash-algorithm = { version = "0.4.0" }                   # from template
+rtt-target = { version = "0.3", features = ["cortex-m"] } # from template
+
+# panic-probe = "0.3"
+stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v"] }
+# stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v", "rt", "xspi"] }
 cortex-m-rt = "0.7.0"
-rtt-target = "0.5.0"
-panic-probe = "0.3"
-stm32h7xx-hal = { version = "0.16.0", features = ["stm32h735", "rt", "xspi"] }
-
-cortex-m = "0.7.6"
-
-flash-algorithm = { version = "0.4.0", default-features = false, features = [
-    "erase-chip",
-    "verify",
-] }
+# rtt-target = "0.5.0"
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "stm32h730xx_is25lp128"
-path = "src/lib.rs"
+name = "stm32h750xx_mt25_ql512"
 test = false
 bench = false
 

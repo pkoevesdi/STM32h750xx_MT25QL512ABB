@@ -1,6 +1,6 @@
-name: algorithm-test
+name: stm32h750xx_mt25_ql512
 variants:
-  - name: algorithm-test
+  - name: stm32h750xx_mt25_ql512
     cores:
       - name: main
         type: armv7em
@@ -12,24 +12,22 @@ variants:
           range:
             start: 0x20000000
             end: 0x20020000
-          # is_boot_memory: false
           access:
-            boot: true
+            boot: false
           cores:
             - main
       - !Nvm
           range:
             start: 0x90000000
-            end: 0x91000000
-          # is_boot_memory: true
+            end: 0x98000000
           access:
             boot: true
           cores:
             - main
     flash_algorithms:
-      - algorithm-test
+      - stm32h750xx_mt25_ql512
 flash_algorithms:
-  - name: algorithm-test
+  - name: stm32h750xx_mt25_ql512
     description: A flash algorithm under test
     cores:
       - main
