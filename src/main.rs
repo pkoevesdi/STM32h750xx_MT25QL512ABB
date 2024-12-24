@@ -192,25 +192,14 @@ impl FlashAlgorithm for Algorithm {
             ccdr.peripheral.QSPI,
         );
 
-        // switch to QPI mode
-        quadspi
-            .write_extended(
-                QspiWord::U8(cmds::Cmds::Qpien as u8),
-                QspiWord::None,
-                QspiWord::None,
-                &[],
-            )
-            .unwrap();
+        quadspi.configure_mode(QspiMode::OneBit).unwrap();
 
-        quadspi
-            .inner_mut()
-            .dcr
-            .modify(|_, w| unsafe { w.fsize().bits(26) }); // set flash size to 2^27 bytes (= 2*512 Mbit)
+        let mut read = [0; 20];
+        quadspi.read(0x9F, &mut read).unwrap();
+        let density = read[2];
 
         // Change bus mode
         quadspi.configure_mode(QspiMode::OneBit).unwrap();
-
-        rprintln!("            done.");
 
         Ok(Self { quadspi })
     }
