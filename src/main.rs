@@ -4,13 +4,19 @@
 use flash_algorithm::*; // from template
 use rtt_target::{rprintln, rtt_init_print}; // from template
 
-use stm32h7xx_hal::{pac, prelude::*};
+mod cmds;
+mod macros;
 
-struct Algorithm; // from template
+use stm32h7xx_hal::gpio::Speed;
+use stm32h7xx_hal::pac::QUADSPI;
+// use stm32h7xx_hal::xspi::BankSelect;
+use stm32h7xx_hal::{pac, prelude::*, xspi::Qspi, xspi::QspiMode, xspi::QspiWord};
 
-// pub struct Algorithm {
-//     quadspi: Qspi<QUADSPI>,
-// }
+// struct Algorithm; // from template
+
+pub struct Algorithm {
+    quadspi: Qspi<QUADSPI>,
+}
 
 // from initialization:
 algorithm!(Algorithm, {
@@ -44,61 +50,61 @@ impl FlashAlgorithm for Algorithm {
             .sys_ck(64.MHz());
 
         rprintln!("            Freezing the core clocks...");
-        let _ccdr = rcc.freeze(pwrcfg, &dp.SYSCFG);
+        let ccdr = rcc.freeze(pwrcfg, &dp.SYSCFG);
 
-        // rprintln!("            hse_ck: {}", ccdr.clocks.hse_ck().unwrap());
-        // rprintln!("            sys_ck: {}", ccdr.clocks.sys_ck());
-        // rprintln!("            hclk: {:}", ccdr.clocks.hclk());
+        rprintln!("            hse_ck: {}", ccdr.clocks.hse_ck().unwrap());
+        rprintln!("            sys_ck: {}", ccdr.clocks.sys_ck());
+        rprintln!("            hclk: {:}", ccdr.clocks.hclk());
 
-        // let gpiob = dp.GPIOB.split(ccdr.peripheral.GPIOB);
-        // let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
-        // let gpiod = dp.GPIOD.split(ccdr.peripheral.GPIOD);
-        // let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
+        let gpiob = dp.GPIOB.split(ccdr.peripheral.GPIOB);
+        let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
+        let gpiod = dp.GPIOD.split(ccdr.peripheral.GPIOD);
+        let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
 
-        // // "All GPIOs have to be configured in very high-speed configuration." - AN5050, p. 30
-        // let clk = gpiob.pb2.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let _bk1_ncs = gpiob.pb6.into_alternate::<10>().speed(Speed::VeryHigh);
-        // let _bk2_ncs = gpioc.pc11.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let bk1_io0 = gpiod.pd11.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let bk1_io1 = gpiod.pd12.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let bk1_io2 = gpioe.pe2.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let bk1_io3 = gpiod.pd13.into_alternate::<9>().speed(Speed::VeryHigh);
-        // let _bk2_io0 = gpioe.pe7.into_alternate::<10>().speed(Speed::VeryHigh);
-        // let _bk2_io1 = gpioe.pe8.into_alternate::<10>().speed(Speed::VeryHigh);
-        // let _bk2_io2 = gpioe.pe9.into_alternate::<10>().speed(Speed::VeryHigh);
-        // let _bk2_io3 = gpioe.pe10.into_alternate::<10>().speed(Speed::VeryHigh);
+        // "All GPIOs have to be configured in very high-speed configuration." - AN5050, p. 30
+        let clk = gpiob.pb2.into_alternate::<9>().speed(Speed::VeryHigh);
+        let _bk1_ncs = gpiob.pb6.into_alternate::<10>().speed(Speed::VeryHigh);
+        let _bk2_ncs = gpioc.pc11.into_alternate::<9>().speed(Speed::VeryHigh);
+        let bk1_io0 = gpiod.pd11.into_alternate::<9>().speed(Speed::VeryHigh);
+        let bk1_io1 = gpiod.pd12.into_alternate::<9>().speed(Speed::VeryHigh);
+        let bk1_io2 = gpioe.pe2.into_alternate::<9>().speed(Speed::VeryHigh);
+        let bk1_io3 = gpiod.pd13.into_alternate::<9>().speed(Speed::VeryHigh);
+        let _bk2_io0 = gpioe.pe7.into_alternate::<10>().speed(Speed::VeryHigh);
+        let _bk2_io1 = gpioe.pe8.into_alternate::<10>().speed(Speed::VeryHigh);
+        let _bk2_io2 = gpioe.pe9.into_alternate::<10>().speed(Speed::VeryHigh);
+        let _bk2_io3 = gpioe.pe10.into_alternate::<10>().speed(Speed::VeryHigh);
 
-        // // Initialise the OCTOSPI peripheral.
-        // let mut quadspi = dp.QUADSPI.bank1(
-        //     (clk, bk1_io0, bk1_io1, bk1_io2, bk1_io3),
-        //     75.MHz(),
-        //     &ccdr.clocks,
-        //     ccdr.peripheral.QSPI,
-        // );
+        // Initialise the SPI peripheral.
+        let mut quadspi = dp.QUADSPI.bank1(
+            (clk, bk1_io0, bk1_io1, bk1_io2, bk1_io3),
+            75.MHz(),
+            &ccdr.clocks,
+            ccdr.peripheral.QSPI,
+        );
 
         // switch to QPI mode
-        // octospi
-        //     .write_extended(
-        //         OctospiWord::U8(cmds::Cmds::Qpien as u8),
-        //         OctospiWord::None,
-        //         OctospiWord::None,
-        //         &[],
-        //     )
-        //     .unwrap();
+        quadspi
+            .write_extended(
+                QspiWord::U8(cmds::Cmds::Qpien as u8),
+                QspiWord::None,
+                QspiWord::None,
+                &[],
+            )
+            .unwrap();
 
-        // quadspi
-        //     .inner_mut()
-        //     .dcr
-        //     .modify(|_, w| unsafe { w.fsize().bits(26) }); // set flash size to 2^27 bytes (= 2*512 Mbit)
+        quadspi
+            .inner_mut()
+            .dcr
+            .modify(|_, w| unsafe { w.fsize().bits(26) }); // set flash size to 2^27 bytes (= 2*512 Mbit)
 
-        // // Change bus mode
-        // quadspi.configure_mode(QspiMode::OneBit).unwrap();
+        // Change bus mode
+        quadspi.configure_mode(QspiMode::OneBit).unwrap();
 
         rprintln!("            done.");
 
-        // Ok(Self { quadspi })
+        Ok(Self { quadspi })
 
-        Ok(Self) // from template
+        // Ok(Self) // from template
     }
 
     fn erase_all(&mut self) -> Result<(), ErrorCode> {

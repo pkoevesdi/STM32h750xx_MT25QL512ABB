@@ -10,8 +10,8 @@ flash-algorithm = { version = "0.4.0" }                   # from template
 rtt-target = { version = "0.3", features = ["cortex-m"] } # from template
 
 # panic-probe = "0.3"
-stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v"] }
-# stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v", "rt", "xspi"] }
+# stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v"] }
+stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v", "rt", "xspi"] }
 cortex-m-rt = "0.7.0"
 # rtt-target = "0.5.0"
 
