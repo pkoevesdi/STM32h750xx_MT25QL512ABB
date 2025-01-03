@@ -66,14 +66,12 @@ fn wren(qspi: &mut Qspi<QUADSPI>) -> Result<(), QspiError> {
 
 fn nord(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &mut [u8]) -> Result<(), QspiError> {
     // NORMAL READ
-    // take an offset as 0x9000000 into account (the address should start with 0)
-    let address = addr - 0x90000000;
     let mut offset = 0;
     while offset < data.len() {
         let chunk_size = core::cmp::min(32, data.len() - offset);
         let res = qspi.read_extended(
             QspiWord::U8(Read as u8),
-            QspiWord::U24(address + offset as u32),
+            QspiWord::U24(addr + offset as u32),
             QspiWord::None,
             0,
             &mut data[offset..offset + chunk_size],
@@ -92,7 +90,6 @@ fn nord(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &mut [u8]) -> Result<(), Qspi
 }
 
 fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError> {
-    let address = addr - 0x90000000;
     let mut offset = 0;
 
     while offset < data.len() {
@@ -104,7 +101,7 @@ fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError>
         // PAGE PROGRAM OPERATION (PP, 02h)
         let res = qspi.write_extended(
             QspiWord::U8(PageProgram as u8),
-            QspiWord::U24(address + offset as u32),
+            QspiWord::U24(addr + offset as u32),
             QspiWord::None,
             chunk,
         );
@@ -127,12 +124,10 @@ fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError>
 fn ser(qspi: &mut Qspi<QUADSPI>, inst: Cmds, addr: u32) -> Result<(), QspiError> {
     // SECTOR ERASE
 
-    let address = addr - 0x90000000;
-
     let _ = wren(qspi);
     let res = qspi.write_extended(
         QspiWord::U8(inst as u8),
-        QspiWord::U24(address),
+        QspiWord::U24(addr),
         QspiWord::None,
         &[],
     );
@@ -208,6 +203,13 @@ impl FlashAlgorithm for Algorithm {
 
         // Change bus mode
         quadspi.configure_mode(QspiMode::OneBit).unwrap();
+
+        // rprintln!("switching to dual-flash");
+        // quadspi.inner_mut().cr.modify(|_, w| w.dfm().set_bit());
+
+        let mut buf = [0; 32];
+        let _ = nord(quadspi.borrow_mut(), 0, &mut buf);
+        rprintln!("Initial Read: {:02x?}", buf);
 
         Ok(Self { quadspi })
     }
@@ -289,7 +291,7 @@ impl Drop for Algorithm {
 
         // read first 32 bytes from flash for simple verification
         let mut buf = [0; 32];
-        let _ = nord(self.quadspi.borrow_mut(), 0x90000000, &mut buf);
+        let _ = nord(self.quadspi.borrow_mut(), 0, &mut buf);
         rprintln!("Read after drop: {:x?}", buf);
     }
 }
