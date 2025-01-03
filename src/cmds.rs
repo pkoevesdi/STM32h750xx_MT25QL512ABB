@@ -1,49 +1,110 @@
 #[allow(dead_code)]
 pub(crate) enum Cmds {
-    Nord = 0x03,      // Normal Read Mode
-    Frd = 0x0B,       // Fast Read Mode
-    Frdio = 0xBB,     // Fast Read Dual I/O
-    Frdo = 0x3B,      // Fast Read Dual Output
-    Frqio = 0xEB,     // Fast Read Quad I/O
-    Frqo = 0x6B,      // Fast Read Quad Output
-    Frdtr = 0x0D,     // Fast Read DTR Mode
-    Frddtr = 0xBD,    // Fast Read Dual I/O DTR
-    Frqdtr = 0xED,    // Fast Read Quad I/O DTR
-    Pp = 0x02,        // Input Page Program
-    Ppq = 0x32,       // Quad Input Page Program
-    PpqAlt = 0x38,    // Quad Input Page Program Alternative
-    Ser = 0x20,       // Sector Erase
-    SerAlt = 0xD7,    // Sector Erase Alternative
-    Ber32 = 0x52,     // Block Erase 32KB
-    Ber64 = 0xD8,     // Block Erase 64KB
-    Cer = 0x60,       // Chip Erase
-    CerAlt = 0xC7,    // Chip Erase Alternative
-    Wren = 0x06,      // Write Enable
-    Wrdi = 0x04,      // Write Disable
-    Rdsr = 0x05,      // Read Status Register
-    Wrsr = 0x01,      // Write Status Register
-    Rdfr = 0x48,      // Read Function Register
-    Wrfr = 0x42,      // Write Function Register
-    Qpien = 0x35,     // Enter QPI mode
-    Qpidi = 0xF5,     // Exit QPI mode
-    Persus = 0x75,    // Suspend during program/erase
-    PersusAlt = 0xB0, // Suspend during program/erase Alternative
-    Perrsm = 0x7A,    // Resume program/erase
-    PerrsmAlt = 0x30, // Resume program/erase Alternative
-    Dp = 0xB9,        // Deep Power Down
-    Rdid = 0xAB,      // Read ID
-    // Rdpd = 0xAB,      // Release Power Down
-    Srp = 0xC0,       // Set Read Parameters
-    Rdjdid = 0x9F,    // Read JEDEC ID Command
-    Rdmdid = 0x90,    // Read Manufacturer & Device ID
-    Rdjdidq = 0xAF,   // Read JEDEC ID QPI mode
-    Rduid = 0x4B,     // Read Unique ID
-    Rdsfdp = 0x5A,    // SFDP Read
-    Rsten = 0x66,     // Software Reset Enable
-    Rst = 0x99,       // Software Reset
-    Irer = 0x64,      // Erase Information Row
-    Irp = 0x62,       // Program Information Row
-    Irrd = 0x68,      // Read Information Row
-    Secunlock = 0x26, // Sector Unlock
-    Seclock = 0x24,   // Sector Lock
+    // extracted from data sheet of MT25QL512ABB https://www.micron.com/products/storage/nor-flash/serial-nor/part-catalog/part-detail/mt25ql512abb8e12-0aat
+
+    // Software RESET Operations
+    ResetEnable = 0x66,
+    ResetMemory = 0x99,
+    // READ ID Operations
+    ReadId = 0x9E,
+    ReadIdAlternative = 0x9F,
+    MultipleIOReadId = 0xAF,
+    ReadSerialFlashDiscoveryParameter = 0x5A,
+    // READ MEMORY Operations
+    Read = 0x03,
+    FastRead = 0x0B,
+    DualOutputFastRead = 0x3B,
+    DualInputOutputFastRead = 0xBB,
+    QuadOutputFastRead = 0x6B,
+    QuadInputOutputFastRead = 0xEB,
+    DtrFastRead = 0x0D,
+    DtrDualOutputFastRead = 0x3D,
+    DtrDualInputOutputFastRead = 0xBD,
+    DtrQuadOutputFastRead = 0x6D,
+    DtrQuadInputOutputFastRead = 0xED,
+    QuadInputOutputWordRead = 0xE7,
+    // READ MEMORY Operations with FOUR-BYTE Address
+    FourByteRead = 0x13,
+    FourByteFastRead = 0x0C,
+    FourByteDualOutputFastRead = 0x3C,
+    FourByteDualInputOutputFastRead = 0xBC,
+    FourByteQuadOutputFastRead = 0x6C,
+    FourByteQuadInputOutputFastRead = 0xEC,
+    FourByteDtrFastRead = 0x0E,
+    FourByteDtrDualInputOutputFastRead = 0xBE,
+    FourByteDtrQuadInputOutputFastRead = 0xEE,
+    // WRITE Operations
+    WriteEnable = 0x06,
+    WriteDisable = 0x04,
+    // READ REGISTER Operations
+    ReadStatusRegister = 0x05,
+    ReadFlagStatusRegister = 0x70,
+    ReadNonvolatileConfiguRationRegister = 0xB5,
+    ReadVolatileConfigurationregister = 0x85,
+    ReadEnhancedVolatileConFigurationRegister = 0x65,
+    ReadExtendedAddressRegIster = 0xC8,
+    ReadGeneralPurposeReadRegister = 0x96,
+    // WRITE REGISTER Operations
+    WriteStatusRegister = 0x01,
+    WriteNonvolatileConfiguRationRegister = 0xB1,
+    WriteVolatileConfiguraTionRegister = 0x81,
+    WriteEnhancedVolatileConfigurationRegister = 0x61,
+    WriteExtendedAddressRegIster = 0xC5,
+    // CLEAR FLAG STATUS REGISTER Operation
+    ClearFlagStatusRegister = 0x50,
+    // PROGRAM Operations
+    PageProgram = 0x02,
+    DualInputFastProgram = 0xA2,
+    ExtendedDualInputFastProgram = 0xD2,
+    QuadInputFastProgram = 0x32,
+    ExtendedQuadInputFastProgram = 0x38,
+    // PROGRAM Operations with FOUR-BYTE Address
+    FourBytePageProgram = 0x12,
+    FourByteQuadInputFastProGram = 0x34,
+    FourByteQuadInputExtendedFastProgram = 0x3E,
+    // ERASE Operations
+    Subsector32KbErase = 0x52,
+    Subsector4KbErase = 0x20,
+    SectorErase = 0xD8,
+    BulkErase = 0xC7,
+    BulkEraseAlternative = 0x60,
+    // ERASE Operations with FOUR-BYTE Address
+    FourByteSectorErase = 0xDC,
+    FourByte4KbSubsectorErase = 0x21,
+    FourByte32KbSubsectorErase = 0x5C,
+    // SUSPEND/RESUME Operations
+    ProgramEraseSuspend = 0x75,
+    ProgramEraseResume = 0x7A,
+    // ONE-TIME PROGRAMMABLE (OTP) Operations
+    ReadOtpArray = 0x4B,
+    ProgramOtpArray = 0x42,
+    // FOUR-BYTE ADDRESS MODE Operations
+    EnterFourByteAddressMode = 0xB7,
+    ExitFourByteAddressMode = 0xE9,
+    // QUAD PROTOCOL Operations
+    EnterQuadInputOutputMode = 0x35,
+    ResetQuadInputOutputMode = 0xF5,
+    // Deep Power-Down Operations
+    EnterDeepPowerDown = 0xB9,
+    ReleaseFromDeepPowerDown = 0xAB,
+    // ADVANCED SECTOR PROTECTION Operations
+    ReadSectorProtection = 0x2D,
+    ProgramSectorProtection = 0x2C,
+    ReadVolatileLockBits = 0xE8,
+    WriteVolatileLockBits = 0xE5,
+    ReadNonvolatileLockBits = 0xE2,
+    WriteNonvolatileLockBits = 0xE3,
+    EraseNonvolatileLockBits = 0xE4,
+    ReadGlobalFreezeBit = 0xA7,
+    WriteGlobalFreezeBit = 0xA6,
+    ReadPassword = 0x27,
+    WritePassword = 0x28,
+    UnlockPassword = 0x29,
+    // ADVANCED SECTOR PROTECTION Operations with FOUR-BYTE Address
+    FourByteReadVolatileLockBits = 0xE0,
+    FourByteWriteVolatileLockBits = 0xE1,
+    // ADVANCED FUNCTION INTERFACE Operations
+    InterfaceActivation = 0x9B,
+    // CyclicRedundancyCheck = 0x9B,
+    // CyclicRedundancyCheckAlternative = 0x27,
 }
