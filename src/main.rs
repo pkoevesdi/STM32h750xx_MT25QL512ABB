@@ -1,7 +1,10 @@
 #![no_std] // from template
 #![no_main] // from template
 
-use core::borrow::{Borrow, BorrowMut};
+use core::borrow::BorrowMut;
+
+mod cmds;
+use cmds::Cmds::{self, *};
 
 use panic_probe as _;
 
@@ -10,15 +13,12 @@ use rtt_target::{rprintln, rtt_init_print}; // from template
 
 use stm32h7xx_hal::gpio::Speed;
 use stm32h7xx_hal::pac::QUADSPI;
-use stm32h7xx_hal::xspi::BankSelect;
+// use stm32h7xx_hal::xspi::BankSelect;
 use stm32h7xx_hal::{pac, prelude::*, xspi::Qspi, xspi::QspiError, xspi::QspiMode, xspi::QspiWord};
-
-// struct Algorithm; // from template
 
 pub struct Algorithm {
     quadspi: Qspi<QUADSPI>,
 }
-
 
 // MT25QL512ABB
 // from initialization:
@@ -32,7 +32,7 @@ algorithm!(Algorithm, {
     program_time_out: 1000,
     erase_time_out: 20000,
     sectors: [{
-        size: 0x1000,
+        size: 0x1000, // subsector size because we're using subsector erase
         address: 0x0,
     }]
 });
@@ -40,21 +40,26 @@ algorithm!(Algorithm, {
 fn wait_for_finish(qspi: &mut Qspi<QUADSPI>) -> u8 {
     let mut read = [1; 1];
     while read[0] & 1 == 1 {
-        qspi.read(0x05, &mut read).unwrap();
+        qspi.read(ReadStatusRegister as u8, &mut read).unwrap();
     }
     read[0]
 }
 
-fn wait_for_finish_dual(qspi: &mut Qspi<QUADSPI>) -> u8 {
-    let mut read = [1; 2];
-    while read[1] & 1 == 1 {
-        qspi.read(0x05, &mut read).unwrap();
-    }
-    read[0]
-}
+// fn wait_for_finish_dual(qspi: &mut Qspi<QUADSPI>) -> u8 {
+//     let mut read = [1; 2];
+//     while read[1] & 1 == 1 {
+//         qspi.read(0x05, &mut read).unwrap();
+//     }
+//     read[0]
+// }
 
 fn wren(qspi: &mut Qspi<QUADSPI>) -> Result<(), QspiError> {
-    let res = qspi.write_extended(QspiWord::U8(0x06), QspiWord::None, QspiWord::None, &[]);
+    let res = qspi.write_extended(
+        QspiWord::U8(WriteEnable as u8),
+        QspiWord::None,
+        QspiWord::None,
+        &[],
+    );
     wait_for_finish(qspi);
     res
 }
@@ -67,7 +72,7 @@ fn nord(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &mut [u8]) -> Result<(), Qspi
     while offset < data.len() {
         let chunk_size = core::cmp::min(32, data.len() - offset);
         let res = qspi.read_extended(
-            QspiWord::U8(0x03),
+            QspiWord::U8(Read as u8),
             QspiWord::U24(address + offset as u32),
             QspiWord::None,
             0,
@@ -98,7 +103,7 @@ fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError>
 
         // PAGE PROGRAM OPERATION (PP, 02h)
         let res = qspi.write_extended(
-            QspiWord::U8(0x02),
+            QspiWord::U8(PageProgram as u8),
             QspiWord::U24(address + offset as u32),
             QspiWord::None,
             chunk,
@@ -119,31 +124,40 @@ fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError>
     Ok(())
 }
 
-fn ser(qspi: &mut Qspi<QUADSPI>, inst: u8, addr: u32) -> Result<(), QspiError> {
+fn ser(qspi: &mut Qspi<QUADSPI>, inst: Cmds, addr: u32) -> Result<(), QspiError> {
     // SECTOR ERASE
 
     let address = addr - 0x90000000;
 
     let _ = wren(qspi);
-    let res = qspi.write_extended(QspiWord::U8(inst), QspiWord::U24(address), QspiWord::None, &[]);
+    let res = qspi.write_extended(
+        QspiWord::U8(inst as u8),
+        QspiWord::U24(address),
+        QspiWord::None,
+        &[],
+    );
     wait_for_finish(qspi);
     res
 }
 
-fn ser_all(qspi: &mut Qspi<QUADSPI>, inst: u8) -> Result<(), QspiError> {
+fn ser_all(qspi: &mut Qspi<QUADSPI>, inst: Cmds) -> Result<(), QspiError> {
     // ERASE ENTIRE CHIP
 
     let _ = wren(qspi);
-    let res = qspi.write_extended(QspiWord::U8(inst), QspiWord::None, QspiWord::None, &[]);
+    let res = qspi.write_extended(
+        QspiWord::U8(inst as u8),
+        QspiWord::None,
+        QspiWord::None,
+        &[],
+    );
     wait_for_finish(qspi);
     res
 }
 
-// Rest: empty functions from template
 impl FlashAlgorithm for Algorithm {
     fn new(_address: u32, _clock: u32, function: Function) -> Result<Self, ErrorCode> {
-        rtt_init_print!(); // from template
-        rprintln!("Init with function {:?}", function); // from template
+        rtt_init_print!();
+        rprintln!("Init with function {:?}", function);
 
         let dp = unsafe { pac::Peripherals::steal() };
 
@@ -192,12 +206,6 @@ impl FlashAlgorithm for Algorithm {
             ccdr.peripheral.QSPI,
         );
 
-        quadspi.configure_mode(QspiMode::OneBit).unwrap();
-
-        let mut read = [0; 20];
-        quadspi.read(0x9F, &mut read).unwrap();
-        let density = read[2];
-
         // Change bus mode
         quadspi.configure_mode(QspiMode::OneBit).unwrap();
 
@@ -205,33 +213,25 @@ impl FlashAlgorithm for Algorithm {
     }
 
     fn erase_all(&mut self) -> Result<(), ErrorCode> {
-
-        let res = ser_all(self.quadspi.borrow_mut(), 0x60);
+        let res = ser_all(self.quadspi.borrow_mut(), BulkErase);
 
         match res {
-            Ok(_) => {
-                Ok(())
-            }
-            Err(e) => {
+            Ok(_) => Ok(()),
+            Err(_) => {
                 Err(ErrorCode::new(42 as u32).unwrap()) // from template
             }
         }
     }
 
     fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        let fsel = self.quadspi.inner_mut().cr.read().fsel().bit() as i8 + 1;
-
-        let res = ser(self.quadspi.borrow_mut(), 0x20, addr);
+        let res = ser(self.quadspi.borrow_mut(), Subsector4KbErase, addr);
         match res {
             Ok(_) => {
                 // wait_for_finish(self.quadspi.borrow_mut());
                 // rprintln!("Erase sector done");
                 Ok(())
             }
-            Err(e) => {
-                // rprintln!("Error: {:?}", e);
-                Err(ErrorCode::new(0x70d0).unwrap())
-            }
+            Err(_) => Err(ErrorCode::new(0x70d0).unwrap()),
         }
 
         // ERROR probe_rs::flashing::flasher: RTT could not be initialized: RTT control block not found in target memory.
@@ -241,11 +241,10 @@ impl FlashAlgorithm for Algorithm {
         // - Depending on the target, sleep modes can interfere with RTT.
     }
 
-    fn verify(&mut self, address: u32, size: u32, data: Option<&[u8]>) -> Result<(), ErrorCode> 
-    {
+    fn verify(&mut self, address: u32, _size: u32, data: Option<&[u8]>) -> Result<(), ErrorCode> {
         let mut array: [u8; 256] = [0; 256];
 
-        nord(self.quadspi.borrow_mut(), address, &mut array);
+        let _ = nord(self.quadspi.borrow_mut(), address, &mut array);
 
         // compare the read data with the data
         if let Some(data) = data {
@@ -259,33 +258,23 @@ impl FlashAlgorithm for Algorithm {
     }
 
     fn program_page(&mut self, addr: u32, data: &[u8]) -> Result<(), ErrorCode> {
-
         let res = pp(self.quadspi.borrow_mut(), addr, data);
 
         match res {
-            Ok(_) => {
-                Ok(())
-            }
-            Err(e) => {
+            Ok(_) => Ok(()),
+            Err(_) => {
                 Err(ErrorCode::new(42 as u32).unwrap()) // from template
             }
         }
     }
 
-    fn read_flash(
-        &mut self,
-        address: u32,
-        data: &mut [u8]
-    ) -> Result<(), ErrorCode> {
-
+    fn read_flash(&mut self, address: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
         // TODO: rtt print doesn't work in this function!
 
         let res = nord(self.quadspi.borrow_mut(), address, data);
         match res {
-            Ok(_) => {
-                Ok(())
-            }
-            Err(e) => {
+            Ok(_) => Ok(()),
+            Err(_) => {
                 Err(ErrorCode::new(42 as u32).unwrap()) // from template
             }
         }
@@ -294,13 +283,13 @@ impl FlashAlgorithm for Algorithm {
 
 impl Drop for Algorithm {
     fn drop(&mut self) {
-        rprintln!("Drop");// from template
-        // drop the dp pack
+        rprintln!("Drop"); // from template
+                           // drop the dp pack
         unsafe { pac::Peripherals::steal() };
 
         // read first 32 bytes from flash for simple verification
-        let mut buf= [0; 32];
-        nord(self.quadspi.borrow_mut(), 0x90000000, &mut buf);
+        let mut buf = [0; 32];
+        let _ = nord(self.quadspi.borrow_mut(), 0x90000000, &mut buf);
         rprintln!("Read after drop: {:x?}", buf);
     }
 }
