@@ -1,7 +1,7 @@
 # Flash Algorithm for STM32h750 with dual external NOR flash MT25QL512ABB  
 
 This is a flash algorithm for usage with `probe-rs`.
-Works with the current (2024-11-30) `master` of `probe-rs`, which can be intalled with `cargo install probe-rs-tools target-gen --git https://github.com/probe-rs/probe-rs --locked --force`
+Works with the toxxin-patched version of `probe-rs`, which can be intalled with `cargo install probe-rs-tools target-gen --git https://github.com/pkoevesdi/probe-rs --branch toxxin-patch --locked --force`
 
 It is instantiated by
 ```bash

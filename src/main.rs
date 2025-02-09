@@ -121,12 +121,12 @@ fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError>
     Ok(())
 }
 
-fn ser(qspi: &mut Qspi<QUADSPI>, inst: Cmds, addr: u32) -> Result<(), QspiError> {
+fn ser(qspi: &mut Qspi<QUADSPI>, instruction: Cmds, addr: u32) -> Result<(), QspiError> {
     // SECTOR ERASE
 
     let _ = wren(qspi);
     let res = qspi.write_extended(
-        QspiWord::U8(inst as u8),
+        QspiWord::U8(instruction as u8),
         QspiWord::U24(addr),
         QspiWord::None,
         &[],
@@ -135,12 +135,12 @@ fn ser(qspi: &mut Qspi<QUADSPI>, inst: Cmds, addr: u32) -> Result<(), QspiError>
     res
 }
 
-fn ser_all(qspi: &mut Qspi<QUADSPI>, inst: Cmds) -> Result<(), QspiError> {
+fn ser_all(qspi: &mut Qspi<QUADSPI>, instruction: Cmds) -> Result<(), QspiError> {
     // ERASE ENTIRE CHIP
 
     let _ = wren(qspi);
     let res = qspi.write_extended(
-        QspiWord::U8(inst as u8),
+        QspiWord::U8(instruction as u8),
         QspiWord::None,
         QspiWord::None,
         &[],

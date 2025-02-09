@@ -1,6 +1,7 @@
 #[allow(dead_code)]
 pub(crate) enum Cmds {
-    // extracted from data sheet of MT25QL512ABB https://www.micron.com/products/storage/nor-flash/serial-nor/part-catalog/part-detail/mt25ql512abb8e12-0aat
+    // SPI Commands of NOR flash MT25QL512ABB
+    // extracted from data sheet https://www.micron.com/products/storage/nor-flash/serial-nor/part-catalog/part-detail/mt25ql512abb8e12-0aat
 
     // Software RESET Operations
     ResetEnable = 0x66,
