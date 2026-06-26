@@ -107,5 +107,5 @@ pub(crate) enum Cmds {
     // ADVANCED FUNCTION INTERFACE Operations
     InterfaceActivation = 0x9B,
     // CyclicRedundancyCheck = 0x9B,
-    // CyclicRedundancyCheckAlternative = 0x27,
+    // CyclicRedundancyCheck = 0x27,
 }

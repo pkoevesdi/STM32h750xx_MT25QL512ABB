@@ -1,297 +1,269 @@
-#![no_std] // from template
-#![no_main] // from template
-
-use core::borrow::BorrowMut;
+#![no_std]
+#![no_main]
 
 mod cmds;
-use cmds::Cmds::{self, *};
+use cmds::Cmds;
 
-use panic_probe as _;
+use core::ptr::{read_volatile, write_volatile};
+use flash_algorithm::*;
 
-use flash_algorithm::*; // from template
-use rtt_target::{rprintln, rtt_init_print}; // from template
+// ── QSPI peripheral (AHB3 at 0x52005000) ──────────────────────────────────
+const QSPI: u32 = 0x5200_5000;
+macro_rules! reg { ($off:expr) => { (QSPI + $off) as *mut u32 } }
+const CR:   *mut u32 = reg!(0x00);
+const DCR:  *mut u32 = reg!(0x04);
+const SR:   *mut u32 = reg!(0x08);
+const FCR:  *mut u32 = reg!(0x0C);
+const DLR:  *mut u32 = reg!(0x10);
+const CCR:  *mut u32 = reg!(0x14);
+const AR:   *mut u32 = reg!(0x18);
+const DR:   *mut u32 = reg!(0x20);
+const DR8:  *mut u8  = reg!(0x20) as *mut u8;
 
-use stm32h7xx_hal::gpio::Speed;
-use stm32h7xx_hal::pac::QUADSPI;
-// use stm32h7xx_hal::xspi::BankSelect;
-use stm32h7xx_hal::{pac, prelude::*, xspi::Qspi, xspi::QspiError, xspi::QspiMode, xspi::QspiWord};
+// SR bits
+const SR_TCF:  u32 = 1 << 1; // transfer complete
+const SR_FTF:  u32 = 1 << 2; // FIFO threshold
+const SR_BUSY: u32 = 1 << 5;
 
-pub struct Algorithm {
-    quadspi: Qspi<QUADSPI>,
+// ── RCC ───────────────────────────────────────────────────────────────────
+const RCC: u32       = 0x5802_4400;
+const AHB3ENR: *mut u32 = (RCC + 0xD4) as *mut u32; // bit 14 = QSPIEN
+const AHB4ENR: *mut u32 = (RCC + 0xE0) as *mut u32; // bit1=GPIOB, 3=GPIOD, 4=GPIOE
+
+// ── GPIO bases ────────────────────────────────────────────────────────────
+const GPIOB: u32 = 0x5802_0400;
+const GPIOD: u32 = 0x5802_0C00;
+const GPIOE: u32 = 0x5802_1000;
+
+// ── Flash constants ───────────────────────────────────────────────────────
+const FLASH_BASE: u32 = 0x9000_0000;
+
+// ── CCR helpers ───────────────────────────────────────────────────────────
+// FMODE: 00=indirect write, 01=indirect read
+// IMODE/ADMODE/DMODE: 00=none, 01=1-line, 10=2-line, 11=4-line
+// ADSIZE: 10=24-bit, 11=32-bit
+
+#[inline(always)]
+fn ccr_cmd1(instr: u8) -> u32 {
+    // Instruction only, 1-line, indirect write, no addr, no data
+    (instr as u32) | (0b01 << 8)
 }
 
-// MT25QL512ABB
-// from initialization:
+#[inline(always)]
+fn ccr_read1(instr: u8) -> u32 {
+    // 1-line instr + 1-line data, indirect read, no addr
+    (instr as u32) | (0b01 << 8) | (0b01 << 24) | (0b01 << 26)
+}
+
+#[inline(always)]
+fn ccr_write4b(instr: u8) -> u32 {
+    // [9:8]=IMODE=01(1-line) [11:10]=ADMODE=01(1-line) [13:12]=ADSIZE=11(32-bit) [25:24]=DMODE=01(1-line)
+    (instr as u32) | (0b01 << 8) | (0b01 << 10) | (0b11 << 12) | (0b01 << 24)
+}
+
+#[inline(always)]
+fn ccr_erase4b(instr: u8) -> u32 {
+    // [9:8]=IMODE=01(1-line) [11:10]=ADMODE=01(1-line) [13:12]=ADSIZE=11(32-bit) no data
+    (instr as u32) | (0b01 << 8) | (0b01 << 10) | (0b11 << 12)
+}
+
+// ── Low-level QSPI helpers ────────────────────────────────────────────────
+
+fn wait_busy() {
+    unsafe { while (read_volatile(SR) & SR_BUSY) != 0 {} }
+}
+
+fn clear_flags() {
+    unsafe { write_volatile(FCR, 0x1F); }
+}
+
+// Send instruction-only command (e.g. WREN, Bulk Erase)
+fn send_cmd(instr: u8) {
+    unsafe {
+        wait_busy();
+        clear_flags();
+        write_volatile(CCR, ccr_cmd1(instr));
+        wait_busy();
+    }
+}
+
+// Read status from both chips: DFM returns BK1 byte then BK2 byte (DLR=1 = 2 logical bytes).
+// Returns packed byte: BK1 WIP at bit 0, BK2 WIP at bit 4 (for use with 0x11 mask).
+fn read_status() -> u8 {
+    unsafe {
+        wait_busy();
+        clear_flags();
+        write_volatile(DLR, 1); // 2 logical bytes (BK1 status + BK2 status)
+        write_volatile(CCR, ccr_read1(Cmds::ReadStatusRegister as u8));
+        while (read_volatile(SR) & SR_TCF) == 0 {}
+        let word = read_volatile(DR);
+        clear_flags();
+        let bk1 = (word & 0xFF) as u8;
+        let bk2 = ((word >> 8) & 0xFF) as u8;
+        bk1 | (bk2 << 4) // BK1 WIP→bit0, BK2 WIP→bit4
+    }
+}
+
+// Poll until both WIP bits clear (DFM: bit0=BK1, bit4=BK2)
+fn wait_wip() {
+    loop {
+        if (read_status() & 0x11) == 0 {
+            break;
+        }
+    }
+}
+
+// ── GPIO helpers ──────────────────────────────────────────────────────────
+
+unsafe fn gpio_setup_af(base: u32, pin: u8, af: u8) {
+    let moder   = (base + 0x00) as *mut u32;
+    let ospeedr = (base + 0x08) as *mut u32;
+    let afrl    = (base + 0x20) as *mut u32;
+    let afrh    = (base + 0x24) as *mut u32;
+
+    // MODER: AF = 0b10
+    let mut v = read_volatile(moder);
+    v &= !(0b11 << (pin * 2));
+    v |=   0b10 << (pin * 2);
+    write_volatile(moder, v);
+
+    // OSPEEDR: Very High = 0b11
+    let mut v = read_volatile(ospeedr);
+    v |= 0b11 << (pin * 2);
+    write_volatile(ospeedr, v);
+
+    // AFR: 4-bit field per pin
+    if pin < 8 {
+        let mut v = read_volatile(afrl);
+        v &= !(0xF << (pin * 4));
+        v |=  (af as u32) << (pin * 4);
+        write_volatile(afrl, v);
+    } else {
+        let p = pin - 8;
+        let mut v = read_volatile(afrh);
+        v &= !(0xF << (p * 4));
+        v |=  (af as u32) << (p * 4);
+        write_volatile(afrh, v);
+    }
+}
+
+// ── Flash algorithm ───────────────────────────────────────────────────────
+
+struct Algorithm;
+
 algorithm!(Algorithm, {
-    device_name: "MT25QL512ABB",
-    device_type: DeviceType::ExtSpi,
+    device_name: "MT25QL512_DFM_WomoLIN",
+    device_type: DeviceType::Ext8Bit,
     flash_address: 0x90000000,
-    flash_size: 0x4000000,
-    page_size: 0x100,
-    empty_value: 0xFF,
+    flash_size:    0x08000000,   // 128 MB logical (2 × 64 MB chips in DFM)
+    page_size:     0x200,        // 512 B logical page  (2 × 256 B physical)
+    empty_value:   0xFF,
     program_time_out: 1000,
-    erase_time_out: 20000,
+    erase_time_out:   20000,
     sectors: [{
-        size: 0x1000, // subsector size because we're using subsector erase
+        size:    0x2000,         // 8 KB logical sector (2 × 4 KB physical)
         address: 0x0,
     }]
 });
 
-fn wait_for_finish(qspi: &mut Qspi<QUADSPI>) -> u8 {
-    let mut read = [1; 1];
-    while read[0] & 1 == 1 {
-        qspi.read(ReadStatusRegister as u8, &mut read).unwrap();
-    }
-    read[0]
-}
-
-// fn wait_for_finish_dual(qspi: &mut Qspi<QUADSPI>) -> u8 {
-//     let mut read = [1; 2];
-//     while read[1] & 1 == 1 {
-//         qspi.read(0x05, &mut read).unwrap();
-//     }
-//     read[0]
-// }
-
-fn wren(qspi: &mut Qspi<QUADSPI>) -> Result<(), QspiError> {
-    let res = qspi.write_extended(
-        QspiWord::U8(WriteEnable as u8),
-        QspiWord::None,
-        QspiWord::None,
-        &[],
-    );
-    wait_for_finish(qspi);
-    res
-}
-
-fn nord(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &mut [u8]) -> Result<(), QspiError> {
-    // NORMAL READ
-    let mut offset = 0;
-    while offset < data.len() {
-        let chunk_size = core::cmp::min(32, data.len() - offset);
-        let res = qspi.read_extended(
-            QspiWord::U8(Read as u8),
-            QspiWord::U24(addr + offset as u32),
-            QspiWord::None,
-            0,
-            &mut data[offset..offset + chunk_size],
-        );
-        match res {
-            Ok(_) => {
-                // rprintln!("Read chunk done");
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-        offset += chunk_size;
-    }
-    Ok(())
-}
-
-fn pp(qspi: &mut Qspi<QUADSPI>, addr: u32, data: &[u8]) -> Result<(), QspiError> {
-    let mut offset = 0;
-
-    while offset < data.len() {
-        let chunk_size = core::cmp::min(32, data.len() - offset);
-        let chunk = &data[offset..offset + chunk_size];
-
-        let _ = wren(qspi);
-
-        // PAGE PROGRAM OPERATION (PP, 02h)
-        let res = qspi.write_extended(
-            QspiWord::U8(PageProgram as u8),
-            QspiWord::U24(addr + offset as u32),
-            QspiWord::None,
-            chunk,
-        );
-
-        match res {
-            Ok(_) => {
-                wait_for_finish(qspi);
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-
-        offset += chunk_size;
-    }
-
-    Ok(())
-}
-
-fn ser(qspi: &mut Qspi<QUADSPI>, instruction: Cmds, addr: u32) -> Result<(), QspiError> {
-    // SECTOR ERASE
-
-    let _ = wren(qspi);
-    let res = qspi.write_extended(
-        QspiWord::U8(instruction as u8),
-        QspiWord::U24(addr),
-        QspiWord::None,
-        &[],
-    );
-    wait_for_finish(qspi);
-    res
-}
-
-fn ser_all(qspi: &mut Qspi<QUADSPI>, instruction: Cmds) -> Result<(), QspiError> {
-    // ERASE ENTIRE CHIP
-
-    let _ = wren(qspi);
-    let res = qspi.write_extended(
-        QspiWord::U8(instruction as u8),
-        QspiWord::None,
-        QspiWord::None,
-        &[],
-    );
-    wait_for_finish(qspi);
-    res
-}
-
 impl FlashAlgorithm for Algorithm {
-    fn new(_address: u32, _clock: u32, function: Function) -> Result<Self, ErrorCode> {
-        rtt_init_print!();
-        rprintln!("Init with function {:?}", function);
+    fn new(
+        _address: u32,
+        _clock: u32,
+        _function: Function,
+    ) -> Result<Self, ErrorCode> {
+        unsafe {
+            // ── RCC: enable GPIOB, GPIOD, GPIOE, QSPI ──────────────────
+            write_volatile(AHB4ENR, read_volatile(AHB4ENR) | (1<<1) | (1<<3) | (1<<4));
+            write_volatile(AHB3ENR, read_volatile(AHB3ENR) | (1<<14));
+            // Ensure clocks propagate (read-back)
+            let _ = read_volatile(AHB3ENR);
 
-        let dp = unsafe { pac::Peripherals::steal() };
+            // ── GPIO AF configuration ────────────────────────────────────
+            // PB2 → QSPI_CLK     AF9
+            gpio_setup_af(GPIOB, 2, 9);
+            // PB6 → QSPI_BK1_NCS AF10
+            gpio_setup_af(GPIOB, 6, 10);
+            // PD11 → BK1_IO0  AF9
+            gpio_setup_af(GPIOD, 11, 9);
+            // PD12 → BK1_IO1  AF9
+            gpio_setup_af(GPIOD, 12, 9);
+            // PD13 → BK1_IO3  AF9
+            gpio_setup_af(GPIOD, 13, 9);
+            // PE2  → BK1_IO2  AF9
+            gpio_setup_af(GPIOE, 2, 9);
+            // PE7  → BK2_IO0  AF10
+            gpio_setup_af(GPIOE, 7, 10);
+            // PE8  → BK2_IO1  AF10
+            gpio_setup_af(GPIOE, 8, 10);
+            // PE9  → BK2_IO2  AF10
+            gpio_setup_af(GPIOE, 9, 10);
+            // PE10 → BK2_IO3  AF10
+            gpio_setup_af(GPIOE, 10, 10);
 
-        // Constrain and Freeze power
-        let pwr = dp.PWR.constrain();
-        let pwrcfg = pwr.freeze();
+            // ── Abort any ongoing QSPI transaction ───────────────────────
+            write_volatile(CR, read_volatile(CR) | (1 << 1)); // ABORT
+            while (read_volatile(CR) & (1 << 1)) != 0 {}
 
-        // Constrain and Freeze clock
-        let rcc = dp
-            .RCC
-            .constrain()
-            .use_hse(25.MHz()) // use (and thus test) external clock - "Will result in a hang if an external oscillator is not connected or it fails to start." - https://docs.rs/stm32h7xx-hal/latest/stm32h7xx_hal/rcc/struct.Rcc.html#method.use_hse
-            .sys_ck(180.MHz())
-            .pll1_q_ck(45.MHz());
+            // ── QSPI CR: disable first ────────────────────────────────────
+            write_volatile(CR, 0);
 
-        rprintln!("            Freezing the core clocks...");
-        let ccdr = rcc.freeze(pwrcfg, &dp.SYSCFG);
+            // ── DCR: FSIZE=26 (total 128 MB in DFM), CSHT=1 ─────────────
+            // FSIZE bits [20:16], CSHT bits [10:8]
+            write_volatile(DCR, (26_u32 << 16) | (1_u32 << 8));
 
-        rprintln!("            hse_ck: {}", ccdr.clocks.hse_ck().unwrap());
-        rprintln!("            sys_ck: {}", ccdr.clocks.sys_ck());
-        rprintln!("            hclk: {:}", ccdr.clocks.hclk());
+            // ── CR: DFM=1(bit6), PRESCALER=1(bits[31:24]), EN=1(bit0) ───
+            // PRESCALER=1 → divide AHB by 2 (safe conservative rate)
+            write_volatile(CR, (1_u32 << 24) | (1_u32 << 6) | (1_u32 << 0));
 
-        let gpiob = dp.GPIOB.split(ccdr.peripheral.GPIOB);
-        let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
-        let gpiod = dp.GPIOD.split(ccdr.peripheral.GPIOD);
-        let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
-
-        // "All GPIOs have to be configured in very high-speed configuration." - AN5050, p. 30
-        let clk = gpiob.pb2.into_alternate::<9>().speed(Speed::VeryHigh);
-        let _bk1_ncs = gpiob.pb6.into_alternate::<10>().speed(Speed::VeryHigh);
-        let _bk2_ncs = gpioc.pc11.into_alternate::<9>().speed(Speed::VeryHigh);
-        let bk1_io0 = gpiod.pd11.into_alternate::<9>().speed(Speed::VeryHigh);
-        let bk1_io1 = gpiod.pd12.into_alternate::<9>().speed(Speed::VeryHigh);
-        let bk1_io2 = gpioe.pe2.into_alternate::<9>().speed(Speed::VeryHigh);
-        let bk1_io3 = gpiod.pd13.into_alternate::<9>().speed(Speed::VeryHigh);
-        let _bk2_io0 = gpioe.pe7.into_alternate::<10>().speed(Speed::VeryHigh);
-        let _bk2_io1 = gpioe.pe8.into_alternate::<10>().speed(Speed::VeryHigh);
-        let _bk2_io2 = gpioe.pe9.into_alternate::<10>().speed(Speed::VeryHigh);
-        let _bk2_io3 = gpioe.pe10.into_alternate::<10>().speed(Speed::VeryHigh);
-
-        // Initialise the SPI peripheral.
-        let mut quadspi = dp.QUADSPI.bank1(
-            (clk, bk1_io0, bk1_io1, bk1_io2, bk1_io3),
-            75.MHz(),
-            &ccdr.clocks,
-            ccdr.peripheral.QSPI,
-        );
-
-        // Change bus mode
-        quadspi.configure_mode(QspiMode::OneBit).unwrap();
-
-        // rprintln!("switching to dual-flash");
-        // quadspi.inner_mut().cr.modify(|_, w| w.dfm().set_bit());
-
-        let mut buf = [0; 32];
-        let _ = nord(quadspi.borrow_mut(), 0, &mut buf);
-        rprintln!("Initial Read: {:02x?}", buf);
-
-        Ok(Self { quadspi })
+            wait_busy();
+        }
+        Ok(Self)
     }
 
     fn erase_all(&mut self) -> Result<(), ErrorCode> {
-        let res = ser_all(self.quadspi.borrow_mut(), BulkErase);
-
-        match res {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                Err(ErrorCode::new(42 as u32).unwrap()) // from template
-            }
-        }
-    }
-
-    fn erase_sector(&mut self, addr: u32) -> Result<(), ErrorCode> {
-        let res = ser(self.quadspi.borrow_mut(), Subsector4KbErase, addr);
-        match res {
-            Ok(_) => {
-                // wait_for_finish(self.quadspi.borrow_mut());
-                // rprintln!("Erase sector done");
-                Ok(())
-            }
-            Err(_) => Err(ErrorCode::new(0x70d0).unwrap()),
-        }
-
-        // ERROR probe_rs::flashing::flasher: RTT could not be initialized: RTT control block not found in target memory.
-        // - Make sure RTT is initialized on the target, AND that there are NO target breakpoints before RTT initialization.
-        // - For VSCode and probe-rs-debugger users, using `halt_after_reset:true` in your `launch.json` file will prevent RTT
-        // initialization from happening on time.
-        // - Depending on the target, sleep modes can interfere with RTT.
-    }
-
-    fn verify(&mut self, address: u32, _size: u32, data: Option<&[u8]>) -> Result<(), ErrorCode> {
-        let mut array: [u8; 256] = [0; 256];
-
-        let _ = nord(self.quadspi.borrow_mut(), address, &mut array);
-
-        // compare the read data with the data
-        if let Some(data) = data {
-            if array != data {
-                rprintln!("Verify failed");
-                return Err(ErrorCode::new(42 as u32).unwrap());
-            }
-        }
-
+        send_cmd(Cmds::WriteEnable as u8);
+        send_cmd(Cmds::BulkErase as u8);
+        wait_wip();
         Ok(())
     }
 
-    fn program_page(&mut self, addr: u32, data: &[u8]) -> Result<(), ErrorCode> {
-        let res = pp(self.quadspi.borrow_mut(), addr, data);
-
-        match res {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                Err(ErrorCode::new(42 as u32).unwrap()) // from template
-            }
+    fn erase_sector(&mut self, address: u32) -> Result<(), ErrorCode> {
+        // Use the logical offset directly. In DFM mode the QUADSPI hardware
+        // already divides AR by 2 when sending the physical address to each chip
+        // (AR[ADSIZE:1] is sent). Manual division would cause a double-shift.
+        let offset = address - FLASH_BASE;
+        send_cmd(Cmds::WriteEnable as u8);
+        unsafe {
+            wait_busy();
+            clear_flags();
+            write_volatile(CCR, ccr_erase4b(Cmds::FourByte4KbSubsectorErase as u8));
+            write_volatile(AR, offset);
+            wait_busy();
         }
+        wait_wip();
+        Ok(())
     }
 
-    fn read_flash(&mut self, address: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
-        // TODO: rtt print doesn't work in this function!
-
-        let res = nord(self.quadspi.borrow_mut(), address, data);
-        match res {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                Err(ErrorCode::new(42 as u32).unwrap()) // from template
+    fn program_page(&mut self, address: u32, data: &[u8]) -> Result<(), ErrorCode> {
+        let offset = address - FLASH_BASE;
+        send_cmd(Cmds::WriteEnable as u8);
+        unsafe {
+            wait_busy();
+            clear_flags();
+            write_volatile(DLR, (data.len() as u32) - 1);
+            write_volatile(CCR, ccr_write4b(Cmds::FourBytePageProgram as u8));
+            write_volatile(AR, offset);
+            // Write data into FIFO
+            for &byte in data {
+                while (read_volatile(SR) & (SR_FTF | SR_TCF)) == 0 {}
+                write_volatile(DR8, byte);
             }
+            while (read_volatile(SR) & SR_TCF) == 0 {}
+            clear_flags();
+            wait_busy();
         }
-    }
-}
-
-impl Drop for Algorithm {
-    fn drop(&mut self) {
-        rprintln!("Drop"); // from template
-                           // drop the dp pack
-        unsafe { pac::Peripherals::steal() };
-
-        // read first 32 bytes from flash for simple verification
-        let mut buf = [0; 32];
-        let _ = nord(self.quadspi.borrow_mut(), 0, &mut buf);
-        rprintln!("Read after drop: {:x?}", buf);
+        wait_wip();
+        Ok(())
     }
 }

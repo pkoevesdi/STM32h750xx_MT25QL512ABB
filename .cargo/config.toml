@@ -1,21 +1,12 @@
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-rustflags = [
-  "-C",
-  "link-arg=--nmagic",
-  "-C",
-  "link-arg=-Tlink.x",
-  "-C",
-  "link-arg=-Tmemory.x",
-  # Code-size optimizations.
-  # This requires nightly atm.
-  # "-Z",
-  # "trap-unreachable=no",
-  "-C",
-  "no-vectorize-loops",
-  "-C",
-  "force-frame-pointers=no",
-]
-runner = "target-gen test template.yaml target/definition.yaml"
-
 [build]
 target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Tmemory.x",
+    "-C", "link-arg=--nmagic",
+]
+# STM32H750VBTx is known to probe-rs natively; no custom chip description needed
+# to test the algorithm (the QSPI definition in definition.yaml is only required
+# when using this algorithm to flash apps, not when testing the algorithm itself).
+runner = ["probe-rs", "run", "--chip", "STM32H750VBTx"]
