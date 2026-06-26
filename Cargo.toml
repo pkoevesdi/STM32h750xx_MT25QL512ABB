@@ -1,29 +1,19 @@
+[workspace]
+
 [package]
+name = "stm32h750xx_mt25_ql512_dfm"
+version = "0.1.0"
 edition = "2021"
 readme = "README.md"
-name = "stm32h750xx_mt25_ql512"
-version = "0.1.0"
 
-[dependencies]
-cortex-m = "0.7.0"                                        # from template
-rtt-target = { version = "0.3", features = ["cortex-m"] } # from template
-
-flash-algorithm = { version= "0.6", default-features = false, features = [
-    "erase-chip",
-    "verify",
-    "read-flash"
-] }
-
-panic-probe = "0.3"
-stm32h7xx-hal = { version = "0.16.0", features = ["stm32h743v", "rt", "xspi"] }
-cortex-m-rt = "0.7.1"
-# rtt-target = "0.5.0"
-
-# this lets you use `cargo fix`!
 [[bin]]
-name = "stm32h750xx_mt25_ql512"
+name = "stm32h750xx_mt25_ql512_dfm"
+path = "src/main.rs"
 test = false
 bench = false
+
+[dependencies]
+flash-algorithm = { version = "0.7.0", features = ["erase-chip"] }
 
 [profile.dev]
 codegen-units = 1
@@ -39,10 +29,9 @@ debug = 2
 debug-assertions = false
 incremental = false
 lto = "fat"
-opt-level = 's'
+opt-level = "s"
 overflow-checks = false
 
-# do not optimize proc-macro crates = faster builds from scratch
 [profile.dev.build-override]
 codegen-units = 8
 debug = false
